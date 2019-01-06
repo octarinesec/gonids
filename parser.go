@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -85,6 +86,12 @@ type Content struct {
 	Pattern []byte
 	// Negate is true for negated content match.
 	Negate bool
+	// NoCase is true for case-insensitive matching
+	NoCase bool
+	// ContentBuffer is the buffer that we have to match for (e.g. http_header).
+	ContentBuffer string
+	// The payload modifiers
+	Modifiers map[string]int
 	// Options are the option associated to the content (e.g. http_header).
 	Options []*ContentOption
 }
@@ -104,6 +111,8 @@ type ContentOption struct {
 	// Value is the value associated to the option, default to 0 for option without value.
 	Value int
 }
+
+type ContentChain []Content
 
 // Reference describes a gonids reference in a rule.
 type Reference struct {
@@ -190,6 +199,10 @@ func (c *Content) ToRegexp() string {
 	return regexp.QuoteMeta(buffer.String())
 }
 
+func (c *Content) RE() string {
+	return escape(string(c.Pattern))
+}
+
 // FormatPattern returns a string for a Pattern in a content
 func (c *Content) FormatPattern() string {
 	var buffer bytes.Buffer
@@ -215,6 +228,76 @@ func (c *Content) FormatPattern() string {
 		buffer.WriteByte('|')
 	}
 	return buffer.String()
+}
+
+func searchNocase(target []byte, pattern []byte) int {
+	patternLen := len(pattern)
+	targetLen := len(target)
+
+	for idx := 0; idx + patternLen <= targetLen; idx++ {
+		currentTarget := target[idx:idx+patternLen]
+		if bytes.EqualFold(currentTarget, pattern) {
+			return idx
+		}
+	}
+	return -1
+}
+
+func index(target []byte, pattern []byte, nocase bool) int {
+	if nocase {
+		return searchNocase(target, pattern)
+	} else {
+		return bytes.Index(target, pattern)
+	}
+}
+
+func (r *Rule) Match(target []byte) bool {
+	lastMatchEndIdx := 0
+
+	// TODO: Implement fast-pattern and MultiPattern matching algorithm
+	// TODO: Implement pcre
+	for _, content := range r.Contents {
+		startIdx := 0
+		endIdx := len(target)
+
+		if offset, ok := content.Modifiers["offset"]; ok {
+			startIdx = offset
+		}
+
+		if depth, ok := content.Modifiers["depth"]; ok {
+			endIdx = depth
+		}
+
+		if distance, ok := content.Modifiers["distance"]; ok {
+			log.Printf("distance!\n")
+			idx := lastMatchEndIdx + distance
+			if idx > startIdx {
+				startIdx = idx
+			}
+		}
+
+		if within, ok := content.Modifiers["within"]; ok {
+			log.Printf("within!\n")
+			idx := lastMatchEndIdx + within
+			if idx < endIdx {
+				endIdx = idx
+			}
+		}
+		log.Printf("Matching agains %v; startIdx=%d; endIdx=%d;\n", content.Pattern, startIdx, endIdx)
+
+		idx := index(target[startIdx:endIdx], content.Pattern, content.NoCase)
+
+		if idx >= 0 {
+			if content.Negate {
+				return false
+			} else {
+				lastMatchEndIdx = idx + len(content.Pattern)
+			}
+		} else if !content.Negate {
+			return false
+		}
+	}
+	return true
 }
 
 // action decodes an IDS rule option based on its key.
@@ -351,19 +434,27 @@ func (r *Rule) option(key item, l *lexer) error {
 				DataPosition: dataPosition,
 				Pattern:      c,
 				Negate:       negate,
+				NoCase: 	  false,
+				Modifiers:	  make(map[string]int),
 				Options:      options,
 			})
 		} else {
 			return fmt.Errorf("invalid type %q for option content", nextItem.typ)
 		}
-	case "http_cookie", "http_raw_cookie", "http_method", "http_header", "http_raw_header",
-		"http_uri", "http_raw_uri", "http_user_agent", "http_stat_code", "http_stat_msg",
-		"http_client_body", "http_server_body", "nocase":
+	case "nocase":
 		if len(r.Contents) == 0 {
 			return fmt.Errorf("invalid content option %q with no content match", key.value)
 		}
 		lastContent := r.Contents[len(r.Contents)-1]
-		lastContent.Options = append(lastContent.Options, &ContentOption{Name: key.value})
+		lastContent.NoCase = true;
+	case "http_cookie", "http_raw_cookie", "http_method", "http_header", "http_raw_header",
+		"http_uri", "http_raw_uri", "http_user_agent", "http_stat_code", "http_stat_msg",
+		"http_client_body", "http_server_body":
+		if len(r.Contents) == 0 {
+			return fmt.Errorf("invalid content option %q with no content match", key.value)
+		}
+		lastContent := r.Contents[len(r.Contents)-1]
+		lastContent.ContentBuffer = key.value
 	case "depth", "distance", "offset", "within":
 		if len(r.Contents) == 0 {
 			return fmt.Errorf("invalid content option %q with no content match", key.value)
@@ -377,7 +468,7 @@ func (r *Rule) option(key item, l *lexer) error {
 			return fmt.Errorf("invalid value %s for option %s", nextItem.value, key.value)
 		}
 		lastContent := r.Contents[len(r.Contents)-1]
-		lastContent.Options = append(lastContent.Options, &ContentOption{Name: key.value, Value: v})
+		lastContent.Modifiers[key.value] = v
 	case "fast_pattern":
 		if len(r.Contents) == 0 {
 			return fmt.Errorf("invalid content option %q with no content match", key.value)
