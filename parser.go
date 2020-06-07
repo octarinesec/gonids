@@ -340,8 +340,8 @@ func searchNocase(target []byte, pattern []byte) int {
 	patternLen := len(pattern)
 	targetLen := len(target)
 
-	for idx := 0; idx + patternLen <= targetLen; idx++ {
-		currentTarget := target[idx:idx+patternLen]
+	for idx := 0; idx+patternLen <= targetLen; idx++ {
+		currentTarget := target[idx : idx+patternLen]
 		if bytes.EqualFold(currentTarget, pattern) {
 			return idx
 		}
@@ -405,7 +405,6 @@ func (r *Rule) Match(target []byte) bool {
 	}
 	return true
 }
-
 
 // comment decodes a comment (commented rule, or just a comment.)
 func (r *Rule) comment(key item, l *lexer) error {
@@ -563,6 +562,12 @@ func (r *Rule) option(key item, l *lexer) error {
 			}
 			r.Metas = append(r.Metas, &Metadata{Key: strings.TrimSpace(metaTmp[0]), Value: strings.TrimSpace(metaTmp[1])})
 		}
+	case key.value == "category":
+		nextItem := l.nextItem()
+		if nextItem.typ != itemOptionValueString {
+			return fmt.Errorf("no valid value for %s tag", key.value)
+		}
+		r.Category = nextItem.value
 	case key.value == "sid":
 		nextItem := l.nextItem()
 		if nextItem.typ != itemOptionValue {
@@ -589,6 +594,22 @@ func (r *Rule) option(key item, l *lexer) error {
 			return errors.New("no value for option msg")
 		}
 		r.Description = nextItem.value
+	case key.value == "severity":
+		nextItem := l.nextItem()
+		if nextItem.typ != itemOptionValue {
+			return errors.New("no value for option severity")
+		}
+		severity, err := strconv.Atoi(nextItem.value)
+		if err != nil {
+			return fmt.Errorf("invalid severity %s", nextItem.value)
+		}
+		r.Severity = severity
+	case key.value == "entry":
+		nextItem := l.nextItem()
+		if nextItem.typ != itemOptionValue {
+			return errors.New("no value for option entry")
+		}
+		r.Entry = nextItem.value
 	case isStickyBuffer(key.value):
 		var d DataPos
 		var err error
@@ -616,8 +637,8 @@ func (r *Rule) option(key item, l *lexer) error {
 				DataPosition: dataPosition,
 				Pattern:      c,
 				Negate:       negate,
-				NoCase: 	  false,
-				Modifiers:	  make(map[string]int),
+				NoCase:       false,
+				Modifiers:    make(map[string]int),
 				Options:      options,
 			}
 			r.Matchers = append(r.Matchers, con)
@@ -629,7 +650,7 @@ func (r *Rule) option(key item, l *lexer) error {
 			return fmt.Errorf("invalid content option %q with no content match", key.value)
 		}
 		lastContent := r.Contents()[len(r.Contents())-1]
-		lastContent.NoCase = true;
+		lastContent.NoCase = true
 	case inSlice(key.value, []string{"http_cookie", "http_raw_cookie", "http_method", "http_header", "http_raw_header",
 		"http_uri", "http_raw_uri", "http_user_agent", "http_stat_code", "http_stat_msg",
 		"http_client_body", "http_server_body", "http_host", "rawbytes", "startswith", "endswith"}):

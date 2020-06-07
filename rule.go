@@ -26,27 +26,36 @@ import (
 // Rule describes an IDS rule.
 type Rule struct {
 	// Disbled identifies if the rule is disabled/commented out.
-	Disabled bool
+	Disabled bool `json:"-"`
 	// Action is the action the rule will take (alert, pass, drop, etc.).
-	Action string
+	Action string `json:"-"`
 	// Protocol is the protocol the rule looks at.
-	Protocol string
+	Protocol string `json:"-"`
 	// Source is the address and ports for the source of the traffic.
-	Source Network
+	Source Network `json:"-"`
 	// Destination is the address and ports for the source of the traffic.
-	Destination Network
+	Destination Network `json:"-"`
 	// Bidirectional indicates the directionality of a rule (-> or <>).
-	Bidirectional bool
+	Bidirectional bool `json:"-"`
 	// SID is the identifier of the rule.
-	SID int
+	SID int `json:"sid"`
 	// Revision is the revision of the rule.
-	Revision int
+	Revision int `json:"rev"`
 	// Description is the msg field of the rule.
-	Description string
+	Description string `json:"desc"`
+	// Category
+	Category string `json:"category"`
+	// Rule Severity
+	Severity int `json:"-"`
+	// Non-unique Threat Entry
+	Entry string `json:"-"`
 	// References contains references associated to the rule (e.g. CVE number).
-	References []*Reference
+	References []*Reference `json:"-"`
+	// TODO: Define some structure for tracking checks that do not directly apply
+	// to a content. urilen, dsize, etc. Various buffers, and directions need structured
+	// places to live.
 	// Contents are all the decoded content matches.
-	Tags map[string]string
+	Tags map[string]string `json:"-"`
 	// Statements is a slice of string. These items are similar to Tags, but have no value. (e.g. 'sameip;')
 	Statements []string
 	// TLSTags is a slice of TLS related matches.
