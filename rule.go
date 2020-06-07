@@ -330,9 +330,17 @@ type Content struct {
 	Pattern []byte
 	// Negate is true for negated content match.
 	Negate bool
+	// NoCase is true for case-insensitive matching
+	NoCase bool
+	// ContentBuffer is the buffer that we have to match for (e.g. http_header).
+	ContentBuffer string
+	// The payload modifiers
+	Modifiers map[string]int
 	// Options are the option associated to the content (e.g. http_header).
 	Options []*ContentOption
 }
+
+type ContentChain []Content
 
 // byteMatchType describes the kinds of byte matches and comparisons that are supported.
 type byteMatchType int
@@ -969,6 +977,10 @@ func (r Rule) String() string {
 	s.WriteString(fmt.Sprintf("sid:%d; rev:%d;)", r.SID, r.Revision))
 	return s.String()
 
+}
+
+func (c *Content) RE() string {
+	return escape(string(c.Pattern))
 }
 
 // ToRegexp returns a string that can be used as a regular expression
